@@ -410,11 +410,14 @@ for (Marking m : probs.keySet()) {
 
 ## Workflows
 
+
+#### Workflow Analysis with Oris
+
 1. Open the model `forkJoinOf2Sequences.xpn` with Oris.
 
 ![workflow](img/workflow-pn.png)
 
-### Rewards of interest
+#### Rewards of interest
 
 1. `p5` -> Cumulative Density Function of completion time
 2. `If(p6>0,RateT5,0)+If(p7>0,RateT4,0)` -> Probability Density Function
@@ -424,10 +427,76 @@ for (Marking m : probs.keySet()) {
 
 **Reward String**: If(p6>0,RateT5,0)+If(p7>0,RateT4,0)
 
-### Transient Analysis of GSPN
+#### Transient Analysis of GSPN
 1. *Time Limit*: 9
 2. *Discretization Step*: 0.1
 
 ![workflow analysis](img/workflow-oris.png)
+
+
+#### Workflow Analysis with Eulero
+
+[Eulero Library](https://dl.acm.org/doi/full/10.1145/3591205) implement a compositional approach 
+to extract distribution of completion times of comlex workflows (up to hundred of tasks involved)
+with a safe approximation meaning that the provided CDF is a stochastic upper bound of the real CDF 
+(i.e., no underestimation of the completion time).
+The analysis is implemented on top of the Sirio Library. 
+
+**REMARK:** Eulero implement a predictive layer on top of the Sirio Library
+
+
+The representation of workflows shifts from a "flat" representation to a hierarchical one called a *Structure Tree*, where the leaves represent simple tasks and the parent nodes represent a specific type of composition.
+
+There are various possible compositions:
+* Sequence: a sequence of tasks (simple or composite)
+* Fork-Join: a parallel composition of tasks (simple or composite) that must synchronize as a final step
+* Choice: an alternative choice between two or more tasks (simple or composite)
+* DAG: all other structures that cannot be reduced to a composition of sequences, fork-joins, and choices.
+
+The representation of this concept leverages a combination of the composite pattern, to be able to treat a simple or composite task equivalently, and the type mapping pattern, to implement different analysis strategies depending on the type of composition.
+
+![workflow representation](img/eulero-workflow-classdiag.png)
+
+For the representation of workflows, we rely on the `Simple` constructor to create simple tasks and on the static methods of the `ModelFactory` class.
+Completion time distributions can be assigned to individual simple tasks through the utility abstract class `StochasticTime`.
+
+Example:
+```java
+Activity A = new Simple("A", new ExponentialTime(BigDecimal.valueOf(1)));
+Activity B = ModelFactory.XOR( List.of(0.1, 0.9), new Simple("B1", new UniformTime(0, 1)), new Simple("B2", new UniformTime(0, 1)));
+Activity C = ModelFactory.sequence(
+        new Simple("C1", new UniformTime(0, 1)),
+        new Simple("C2", new UniformTime(0, 1)));
+Activity workflow = ModelFactory.forkJoin(A,B,C);
+```
+
+To conduct the analysis, an implementation of an `AnalysisHeuristicVisitor` class (visitor pattern) is used, in which, through set thresholds, an approximation strategy is followed depending on the complexity of the block to be analyzed (`CThreshold` and `QThreshold`).
+
+The analysis is executed by the composite task to be analyzed by providing as input the `timelimit`, the `timestep`, and the `AnalysisHeuristicVisitor` instance.
+
+```java
+AnalysisHeuristicsVisitor myAnalyzer = new SDFHeuristicsVisitor(BigInteger.valueOf(3), 
+        BigInteger.valueOf(3), new DoubleTruncatedEXPApproximation());
+
+double[] res = workflow.analyze(BigDecimal.valueOf(timelimit), 
+        BigDecimal.valueOf(timestep), myAnalyzer);
+```
+
+
+## Resource Provisioning in Worflows
+
+1. Open the model `forkJoinProvisioning.xpn` with Oris.
+
+![inertialProvisioning](img/inertiaProvisioning.png)
+
+in the fork/Join of 2 random variables with different inertia to speedup/down at par of some concept of resource cost, 
+having the same expected time on both branches is not necessarily the best option
+
+The example considers the case where a speedDown of 10% on the rate of the lower activity frees resources 
+sufficient for a spedUp of 100% on the rate of the upper activity (i.e. they have a ration of inertia 1:10)  ... the CDF of the time to complete in p11 is stochastically ordered wrt the CDF of the time to complete in p5.
+
+You can double-check the result through Oris (p5;p11 as rewards) or through Eulero.
+
+![analysis](img/inertia-analysis.png)
 
 
