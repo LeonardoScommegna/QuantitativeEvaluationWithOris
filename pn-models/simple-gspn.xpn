@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<tpn-editor>
+  <tpn-entities>
+    <place uuid="36470e15-d7e6-4b6b-b538-50fae69d5ee5" x="432" y="134">
+      <features/>
+      <properties>
+        <property id="0.default.name" name="Queue" satellite-x="410" satellite-y="156"/>
+        <property id="default.marking" marking="0"/>
+      </properties>
+    </place>
+    <place uuid="6561795d-f443-4af1-8088-ae92f35ac193" x="534" y="239">
+      <features/>
+      <properties>
+        <property id="0.default.name" name="SRate" satellite-x="532" satellite-y="274"/>
+        <property id="default.marking" marking="20"/>
+      </properties>
+    </place>
+    <place uuid="734a32ab-aeac-4c90-94db-296c663e12c0" x="595" y="239">
+      <features/>
+      <properties>
+        <property id="0.default.name" name="PoolSize" satellite-x="596" satellite-y="274"/>
+        <property id="default.marking" marking="2"/>
+      </properties>
+    </place>
+    <place uuid="bbf05bd6-60fc-447a-96a3-3aed0b65e52c" x="330" y="239">
+      <features/>
+      <properties>
+        <property id="0.default.name" name="ARate" satellite-x="330" satellite-y="271"/>
+        <property id="default.marking" marking="40"/>
+      </properties>
+    </place>
+    <place uuid="ced75a95-2f68-4245-8444-4b6454714c96" x="432" y="239">
+      <features/>
+      <properties>
+        <property id="0.default.name" name="QueueSize" satellite-x="428" satellite-y="271"/>
+        <property id="default.marking" marking="16"/>
+      </properties>
+    </place>
+    <transition rotation-angle="-1.5707963267948966" uuid="1687f706-7f81-43c1-865c-5da0a9626c13" x="432" y="57">
+      <features>
+        <feature id="transition.stochastic"/>
+      </features>
+      <properties>
+        <property id="0.default.name" name="reject" satellite-x="459" satellite-y="69"/>
+        <property enabling-function="Queue&gt;QueueSize" id="10.default.enablingFunction"/>
+        <property id="11.default.markingUpdate" marking-update=""/>
+        <property id="12.default.resetTransitions" reset-transitions=""/>
+        <property id="transition.stochastic" priority="0" property-data-type="0.type.immediate" satellite-x="432" satellite-y="87" weight="1"/>
+      </properties>
+    </transition>
+    <transition rotation-angle="0.0" uuid="b9294074-c73b-445c-8557-31b2b2a128d2" x="534" y="134">
+      <features>
+        <feature id="transition.stochastic"/>
+      </features>
+      <properties>
+        <property id="0.default.name" name="service" satellite-x="535" satellite-y="110"/>
+        <property enabling-function="" id="10.default.enablingFunction"/>
+        <property id="11.default.markingUpdate" marking-update=""/>
+        <property id="12.default.resetTransitions" reset-transitions=""/>
+        <property id="transition.stochastic" lambda="1.0*SRate/100*min(PoolSize,Queue)" property-data-type="3.type.exponential" satellite-x="559" satellite-y="164"/>
+      </properties>
+    </transition>
+    <transition rotation-angle="0.0" uuid="cf37c683-7db7-46dc-8244-6487bf319c4e" x="330" y="134">
+      <features>
+        <feature id="transition.stochastic"/>
+      </features>
+      <properties>
+        <property id="0.default.name" name="arrival" satellite-x="326" satellite-y="107"/>
+        <property enabling-function="" id="10.default.enablingFunction"/>
+        <property id="11.default.markingUpdate" marking-update=""/>
+        <property id="12.default.resetTransitions" reset-transitions=""/>
+        <property id="transition.stochastic" lambda="1.0*ARate/100" property-data-type="3.type.exponential" satellite-x="330" satellite-y="164"/>
+      </properties>
+    </transition>
+    <note height="677" uuid="9b0282d5-588b-4d97-87c6-1568059f78e2" width="812" x="670" y="-5">
+      <features/>
+      <properties/>
+                  rewards of interest
+Queue;If(Queue==QueueSize,1*ARate/(100),0);If(Queue==0,1,0)
+
+
+                  May '25
+PoissonArrivalsWithRejection_BoundedParallelService_parametrized.xpn
+
+an example of basic modeling idioms for arrival and service:
+Poisson arrivals with rejection + Multiple Server with bounded paralllelism
+
+The server represents a combination of Vertical and Horizontal Scaling, controlled by SRate/SRateDiv and PoolSize, respectively.
+Service is parallel up to PoolSize, then timeshared (or queued+ parallel as with EXP durations there is no difference).
+When Queue is lower than PoolSize, soemn resources are not exploited.
+
+Some quantities of interest:
+rejection rate:  If(Queue==MaxSize,1.0*ARate/ARateDiv,0)
+mean number of unused resources: If(Queue&lt;PoolSize, PoolSize-Queue,0)
+queue length (about waiting time): Queue
+
+REWARDS capturing the quantities of interest
+If(Queue&lt;PoolSize,PoolSize-Queue,0); If(Queue==QueueSize,1.0*ARate/100,0);Queue  
+per i primi due puo' interessare anche il reward in forma cumulativa
+FIXME: il reward di interesse sarebbe If(Queue==MaxSize,1.0*ARate/ARateDiv,0); If(Queue&lt;PoolSize, PoolSize-Queue,0); Queue  ...espresso sui parametri anziché hardcoding il valore di ARateDiv  ... ma, non è accettato dal LelloParser che ci vede una division by zero
+
+
+Remark: 
+con ARate=40 e SRate=20 con PoolSize=2 siamo poco sotto il filo della stabilità 
+... ma, la coda ha occupazione media circa 8, quindi con molta inefficienza 
+... perché ci sono rejections con un tasso sostenuto, oltre 0.02 ... che si osserva bene anche calcolando i rewards in modo cumulativo (non Queue) 
+
+Model Predictive Control:
+reduce resources (either reducing the PoolSize as in HS, or reducing SRate/SRateDiv as in VS)
+down until achievenig the tolerated rejection rate ... and then evaluate what is efficiency in resource usage
+
+e.g. se lo SLO fosse un tasso di rejection di 0.001
+Vertical Scaling: 
+aumentando SRate da 20 a 30 il tasso di rejection scende a 2*10^-5 --- bastava un incremento piu'modesto
+con SRate=25, lo SLO non è ancora soddisfatto
+con SRate=28 lo SLO è soddisfatto
+(... questa è matematica caclolata ... poi, si tratta di vedere quale è la granularità che puo' essere gestita nello scaling di risorse ... in questo caso la quantità di milliCPU)
+
+Some questions and remarks:
+1. stability is always guaranteed by rejection (which ensures more than stability: it guarantees a boudned number of tokens)
+if rejection was not implemented, stability would have required the arrival rate be lower than the service rate, i.e. 1.0*ARate/ARateDiv&lt;1.0*SRate/SRateDiv ... which would not be sufficient as during low workload phases resources are not used with their max parallelism
+
+2. what is the impact of the QueueSize?
+(a high QueueSize helps in balancing transient phases of low and high arrival counts ... which becomes relevant when the stability margin is tight ... at the expense of queueing delay)
+
+3. should we better have a low number of large containers, or a large number of containers with few well tailored resources? The first case would rely on timesharing, reducing isolation between service instances; the latter case would improve isolation and scalability, but results in unused resources unless horizontal scaling guarantees rapid elastic reaction
+
+    
+    
+    
+    
+    
+    
+    </note>
+    <arc from="36470e15-d7e6-4b6b-b538-50fae69d5ee5" to="1687f706-7f81-43c1-865c-5da0a9626c13" uuid="d5f633a0-2ac6-4f08-aae0-254a5b2d0cb4">
+      <features/>
+      <properties/>
+    </arc>
+    <arc from="36470e15-d7e6-4b6b-b538-50fae69d5ee5" to="b9294074-c73b-445c-8557-31b2b2a128d2" uuid="e74c7634-f0f8-4137-ba27-9d14b16a6f0c">
+      <features/>
+      <properties/>
+    </arc>
+    <arc from="cf37c683-7db7-46dc-8244-6487bf319c4e" to="36470e15-d7e6-4b6b-b538-50fae69d5ee5" uuid="fd5fc9ba-eb17-4b40-bc72-96510fab6740">
+      <features/>
+      <properties/>
+    </arc>
+  </tpn-entities>
+</tpn-editor>
